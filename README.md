@@ -5,7 +5,6 @@ Multithreaded Network Interface Poller written in Python
 
 
 
-
 ifHCInOctets (.1.3.6.1.2.1.31.1.1.1.6)	
 ifHCOutOctets (1.3.6.1.2.1.31.1.1.1.10)
 ifHCInUcastPkts (.1.3.6.1.2.1.31.1.1.1.7)	
