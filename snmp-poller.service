@@ -1,0 +1,16 @@
+[Unit]
+Description=High-Frequency SNMP Interface Counter Poller Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/snmp
+ExecStart=/usr/bin/python3 /opt/snmp/poller.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
