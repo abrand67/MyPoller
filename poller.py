@@ -90,26 +90,46 @@ def snmp_get_hc_counters(ip, community, if_id):
 
 
 def db_writer_worker(write_queue):
+    """Optimized batch-writing SQLite consumer to handle scaling data volume."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    
+    # Performance tuning for fast concurrent writes
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA cache_size=-64000") # Allocate ~64MB cache memory
+    
+    batch_size = 50
+    batch = []
+    
     while True:
         data = write_queue.get()
         if data is None:
+            # Commit any remaining items before exiting
+            if batch:
+                try:
+                    cursor.executemany("INSERT OR REPLACE INTO port_metrics VALUES (?, ?, ?, ?, ?, ?)", batch)
+                    conn.commit()
+                except sqlite3.Error as e:
+                    print(f"[DB ERROR] Final batch failed: {e}", file=sys.stderr)
             break
-        try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO port_metrics 
-                (timestamp, switch_ip, interface_id, interface_name, in_octets, out_octets)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, data)
-            conn.commit()
-        except sqlite3.Error as e:
-            print(f"[DB ERROR] {e}", file=sys.stderr)
-        finally:
-            write_queue.task_done()
+            
+        batch.append(data)
+        
+        # Write to disk in controlled blocks
+        if len(batch) >= batch_size:
+            try:
+                cursor.executemany("INSERT OR REPLACE INTO port_metrics VALUES (?, ?, ?, ?, ?, ?)", batch)
+                conn.commit()
+            except sqlite3.Error as e:
+                print(f"[DB ERROR] Batch commit failed: {e}", file=sys.stderr)
+            finally:
+                batch = []
+                
+        write_queue.task_done()
+        
     conn.close()
     write_queue.task_done()
-
 
 def poller_worker(job_queue, write_queue, timestamp):
     while True:
