@@ -5,11 +5,13 @@ import rrdtool
 DB_FILE = "snmp_metrics.db"
 OUTPUT_DIR = "graphs"
 
+
 def fetch_unique_interfaces():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT switch_ip, interface_id, interface_name FROM port_metrics")
         return cursor.fetchall()
+
 
 def generate_graph(switch_ip, interface_id, interface_name):
     with sqlite3.connect(DB_FILE) as conn:
@@ -32,10 +34,10 @@ def generate_graph(switch_ip, interface_id, interface_name):
         rrdtool.create(
             rrd_filename,
             "--start", str(start_time),
-            "--step", "10",                # Optimized step for 10-second metric intervals
-            "DS:in:COUNTER:30:U:U",       # Heartbeat set to 30 seconds
+            "--step", "10",
+            "DS:in:COUNTER:30:U:U",
             "DS:out:COUNTER:30:U:U",
-            "RRA:AVERAGE:0.5:1:17280"     # Keeps up to 48 hours of high-frequency data
+            "RRA:AVERAGE:0.5:1:17280"
         )
         
         for row in rows:
@@ -57,20 +59,37 @@ def generate_graph(switch_ip, interface_id, interface_name):
             "--width=650",
             "--height=200",
             "--anti-aliasing", "all",
+            
+            # Canvas Color Styling (Classic WinBox Palette)
+            "--color", "BACK#D4D0C8",       # Frame Background
+            "--color", "CANVAS#FFFFFF",     # Plot Grid Area Background
+            "--color", "GRID#B0B0B0",       # Grid Lines
+            "--color", "MGRID#808080",      # Major Grid Markings
+            "--color", "FONT#000000",       # Legend Typography
+            
             f"DEF:in_bytes={rrd_filename}:in:AVERAGE",
             f"DEF:out_bytes={rrd_filename}:out:AVERAGE",
             "CDEF:in_bits=in_bytes,8,*",
             "CDEF:out_bits=out_bytes,8,*",
-            "AREA:in_bits#00FF00:Inbound Traffic\\j",
-            "LINE1:out_bits#0000FF:Outbound Traffic\\j",
-            "GPRINT:in_bits:LAST:Current In\\: %6.2lf %sBps",
-            "GPRINT:in_bits:MAX:Max In\\: %6.2lf %sBps\\j",
-            "GPRINT:out_bits:LAST:Current Out\\: %6.2lf %sBps",
-            "GPRINT:out_bits:MAX:Max Out\\: %6.2lf %sBps\\j"
+            
+            # --- RX / Inbound Traffic (Light Red Fill with Red Line Border) ---
+            "AREA:in_bits#FFC0C0:rx (bit/s)",
+            "LINE1:in_bits#CC0000",
+            
+            # --- TX / Outbound Traffic (Transparent Purple Layer over RX) ---
+            "AREA:out_bits#C0A0E080:tx (bit/s):STACK", # Added Alpha Channel hex '80' for opacity blending
+            "LINE1:out_bits#660099",
+            
+            # Text Metrics Output Layout
+            "GPRINT:in_bits:LAST:Current Rx\\: %6.2lf %sBps",
+            "GPRINT:in_bits:MAX:Max Rx\\: %6.2lf %sBps\\j",
+            "GPRINT:out_bits:LAST:Current Tx\\: %6.2lf %sBps",
+            "GPRINT:out_bits:MAX:Max Tx\\: %6.2lf %sBps\\j"
         )
     finally:
         if os.path.exists(rrd_filename):
             os.remove(rrd_filename)
+
 
 def main():
     if not os.path.exists(DB_FILE):
@@ -78,6 +97,7 @@ def main():
     targets = fetch_unique_interfaces()
     for switch_ip, if_id, if_name in targets:
         generate_graph(switch_ip, if_id, if_name)
+
 
 if __name__ == "__main__":
     main()
